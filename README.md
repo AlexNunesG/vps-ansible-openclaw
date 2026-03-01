@@ -26,6 +26,7 @@ The underlying project currently requires system-level permissions and configura
 - 🔄 **Auto-updates**: Automatic security patches via unattended-upgrades
 - 🔐 **Tailscale VPN**: Secure remote access without exposing services
 - 🐳 **Docker**: Docker CE with security hardening
+- 🚢 **Optional Dokploy**: Private control plane with public app ingress
 - 🚀 **One-command install**: Complete setup in minutes
 - 🔧 **Auto-configuration**: DBus, systemd, environment setup
 - 📦 **pnpm installation**: Uses `pnpm install -g openclaw@latest`
@@ -51,6 +52,16 @@ cd openclaw-ansible
 
 # Install in development mode
 ansible-playbook playbook.yml --ask-become-pass -e openclaw_install_mode=development
+```
+
+### Optional: Provision Dokploy (Private Panel + Public Apps)
+
+Enable Dokploy with private panel access (Tailscale CIDR) while exposing apps through Traefik on 80/443:
+
+```bash
+ansible-playbook playbook.yml --ask-become-pass \
+  -e tailscale_enabled=true \
+  -e dokploy_enabled=true
 ```
 
 ## What Gets Installed
@@ -125,6 +136,7 @@ Enable with: `-e openclaw_install_mode=development`
 ## Security
 
 - **Public ports**: SSH (22), Tailscale (41641/udp) only
+- **Dokploy mode**: Adds public 80/443 for app ingress, keeps panel (3000) private-only
 - **Fail2ban**: SSH brute-force protection (5 attempts → 1 hour ban)
 - **Automatic updates**: Security patches via unattended-upgrades
 - **Docker isolation**: Containers can't expose ports externally (DOCKER-USER chain)
@@ -133,6 +145,8 @@ Enable with: `-e openclaw_install_mode=development`
 - **Systemd hardening**: NoNewPrivileges, PrivateTmp, ProtectSystem
 
 Verify: `nmap -p- YOUR_SERVER_IP` should show only port 22 open.
+
+When Dokploy is enabled, `nmap -p- YOUR_SERVER_IP` should show 22, 80, and 443 only.
 
 ### Security Note
 
@@ -255,6 +269,11 @@ Edit `roles/openclaw/defaults/main.yml` before running the playbook.
 | `openclaw_repo_branch` | `main` | Git branch (dev mode) |
 | `tailscale_authkey` | `""` | Tailscale auth key for auto-connect |
 | `nodejs_version` | `22.x` | Node.js version to install |
+| `dokploy_enabled` | `false` | Enable Dokploy provisioning |
+| `dokploy_release_tag` | `latest` | Dokploy image tag |
+| `dokploy_panel_private_only` | `true` | Restrict panel to private access model |
+| `dokploy_panel_allowed_cidr` | `100.64.0.0/10` | Allowed source CIDR for panel access |
+| `dokploy_public_ingress_enabled` | `true` | Expose app ingress on 80/443 |
 
 See [`roles/openclaw/defaults/main.yml`](roles/openclaw/defaults/main.yml) for the complete list.
 

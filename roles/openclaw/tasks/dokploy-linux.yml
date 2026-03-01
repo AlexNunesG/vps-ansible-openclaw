@@ -1,0 +1,186 @@
+---
+# Linux-specific Dokploy provisioning
+# Control plane is private by default; app ingress can be public through Traefik (80/443).
+
+- name: Validate Dokploy private panel requirements
+  ansible.builtin.assert:
+    that:
+      - not dokploy_panel_private_only or tailscale_enabled | bool
+    fail_msg: >-
+      Dokploy private panel mode requires Tailscale.
+      Set tailscale_enabled=true or set dokploy_panel_private_only=false explicitly.
+
+- name: Create Dokploy directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ dokploy_data_dir }}"
+    - "{{ dokploy_data_dir }}/traefik"
+    - "{{ dokploy_data_dir }}/traefik/dynamic"
+
+- name: Write Traefik base configuration for Dokploy
+  ansible.builtin.template:
+    src: dokploy-traefik.yml.j2
+    dest: "{{ dokploy_data_dir }}/traefik/traefik.yml"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Check Docker Swarm local node state
+  ansible.builtin.command: docker info --format '{{"{{"}}.Swarm.LocalNodeState{{"}}"}}'
+  register: docker_swarm_state
+  changed_when: false
+
+- name: Initialize Docker Swarm for Dokploy
+  ansible.builtin.command: >-
+    docker swarm init
+    --advertise-addr {{ (dokploy_advertise_addr | trim) if (dokploy_advertise_addr | trim | length > 0) else ansible_default_ipv4.address }}
+  when: docker_swarm_state.stdout != 'active'
+
+- name: Check if Dokploy overlay network exists
+  ansible.builtin.command: docker network inspect {{ dokploy_network_name }}
+  register: dokploy_network_exists
+  changed_when: false
+  failed_when: false
+
+- name: Create Dokploy overlay network
+  ansible.builtin.command: docker network create --driver overlay --attachable {{ dokploy_network_name }}
+  when: dokploy_network_exists.rc != 0
+
+- name: Check if Dokploy postgres secret exists
+  ansible.builtin.command: docker secret inspect dokploy_postgres_password
+  register: dokploy_secret_exists
+  changed_when: false
+  failed_when: false
+
+- name: Generate Dokploy postgres password file
+  ansible.builtin.shell:
+    cmd: |
+      set -o errexit
+      set -o nounset
+      set -o pipefail
+      umask 077
+      openssl rand -base64 32 | tr -d '=+/' | cut -c1-32 > {{ dokploy_data_dir }}/.postgres_password
+    creates: "{{ dokploy_data_dir }}/.postgres_password"
+    executable: /bin/bash
+
+- name: Read Dokploy postgres password file
+  ansible.builtin.slurp:
+    path: "{{ dokploy_data_dir }}/.postgres_password"
+  register: dokploy_postgres_password_file
+
+- name: Create Dokploy postgres Docker secret
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      cat {{ dokploy_data_dir }}/.postgres_password | docker secret create dokploy_postgres_password -
+    executable: /bin/bash
+  when: dokploy_secret_exists.rc != 0
+
+- name: Check if dokploy-postgres service exists
+  ansible.builtin.command: docker service inspect dokploy-postgres
+  register: dokploy_postgres_service
+  changed_when: false
+  failed_when: false
+
+- name: Create dokploy-postgres service
+  ansible.builtin.command: >-
+    docker service create
+    --name dokploy-postgres
+    --constraint 'node.role==manager'
+    --network {{ dokploy_network_name }}
+    --env POSTGRES_USER=dokploy
+    --env POSTGRES_DB=dokploy
+    --secret source=dokploy_postgres_password,target=/run/secrets/postgres_password
+    --env POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+    --mount type=volume,source=dokploy-postgres,target=/var/lib/postgresql/data
+    postgres:16
+  when: dokploy_postgres_service.rc != 0
+
+- name: Check if dokploy-redis service exists
+  ansible.builtin.command: docker service inspect dokploy-redis
+  register: dokploy_redis_service
+  changed_when: false
+  failed_when: false
+
+- name: Create dokploy-redis service
+  ansible.builtin.command: >-
+    docker service create
+    --name dokploy-redis
+    --constraint 'node.role==manager'
+    --network {{ dokploy_network_name }}
+    --mount type=volume,source=dokploy-redis,target=/data
+    redis:7
+  when: dokploy_redis_service.rc != 0
+
+- name: Check if dokploy service exists
+  ansible.builtin.command: docker service inspect dokploy --format '{{"{{"}}.Spec.TaskTemplate.ContainerSpec.Image{{"}}"}}'
+  register: dokploy_service_image
+  changed_when: false
+  failed_when: false
+
+- name: Create dokploy service
+  ansible.builtin.command: >-
+    docker service create
+    --name dokploy
+    --replicas 1
+    --network {{ dokploy_network_name }}
+    --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock
+    --mount type=bind,source={{ dokploy_data_dir }},target=/etc/dokploy
+    --mount type=volume,source=dokploy,target=/root/.docker
+    --secret source=dokploy_postgres_password,target=/run/secrets/postgres_password
+    --publish published={{ dokploy_panel_port }},target=3000,mode=host
+    --update-parallelism 1
+    --update-order stop-first
+    --constraint 'node.role==manager'
+    --env ADVERTISE_ADDR={{ (dokploy_advertise_addr | trim) if (dokploy_advertise_addr | trim | length > 0) else ansible_default_ipv4.address }}
+    --env POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+    --env TZ={{ dokploy_timezone }}
+    dokploy/dokploy:{{ dokploy_release_tag }}
+  when: dokploy_service_image.rc != 0
+
+- name: Update dokploy service image when tag changes
+  ansible.builtin.command: docker service update --image dokploy/dokploy:{{ dokploy_release_tag }} dokploy
+  when:
+    - dokploy_service_image.rc == 0
+    - dokploy_service_image.stdout != 'dokploy/dokploy:{{ dokploy_release_tag }}'
+
+- name: Ensure dokploy-traefik container exists
+  ansible.builtin.command: docker container inspect dokploy-traefik
+  register: dokploy_traefik_exists
+  changed_when: false
+  failed_when: false
+
+- name: Create dokploy-traefik container
+  ansible.builtin.command: >-
+    docker run -d
+    --name dokploy-traefik
+    --restart always
+    -v {{ dokploy_data_dir }}/traefik/traefik.yml:/etc/traefik/traefik.yml
+    -v {{ dokploy_data_dir }}/traefik/dynamic:/etc/dokploy/traefik/dynamic
+    -v /var/run/docker.sock:/var/run/docker.sock:ro
+    -p {{ dokploy_public_http_port }}:80/tcp
+    -p {{ dokploy_public_https_port }}:443/tcp
+    {% if dokploy_public_https_udp_enabled | bool %}-p {{ dokploy_public_https_port }}:443/udp{% endif %}
+    {{ dokploy_traefik_image }}
+  when: dokploy_traefik_exists.rc != 0
+
+- name: Ensure dokploy-traefik connected to Dokploy network
+  ansible.builtin.command: docker network connect {{ dokploy_network_name }} dokploy-traefik
+  register: dokploy_traefik_network_connect
+  changed_when: dokploy_traefik_network_connect.rc == 0
+  failed_when:
+    - dokploy_traefik_network_connect.rc != 0
+    - "'already exists in network' not in (dokploy_traefik_network_connect.stderr | default(''))"
+
+- name: Display Dokploy access summary
+  ansible.builtin.debug:
+    msg: |
+      Dokploy provisioned.
+      - Panel: port {{ dokploy_panel_port }} (private-only: {{ dokploy_panel_private_only }})
+      - App ingress: public {{ dokploy_public_http_port }}/{{ dokploy_public_https_port }}
+      - Image: dokploy/dokploy:{{ dokploy_release_tag }}

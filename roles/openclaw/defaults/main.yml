@@ -9,6 +9,23 @@ ci_test: false
 tailscale_enabled: false  # Set to true to install and configure Tailscale
 tailscale_authkey: ""  # Optional: set to auto-connect during installation
 
+# Dokploy settings (optional)
+# When enabled, Dokploy control plane remains private (Tailscale) while apps can be public via 80/443 ingress.
+dokploy_enabled: false
+dokploy_release_tag: "latest"
+dokploy_data_dir: /etc/dokploy
+dokploy_network_name: dokploy-network
+dokploy_panel_port: 3000
+dokploy_panel_private_only: true
+dokploy_panel_allowed_cidr: "100.64.0.0/10"  # Tailscale CGNAT range
+dokploy_public_ingress_enabled: true
+dokploy_public_http_port: 80
+dokploy_public_https_port: 443
+dokploy_public_https_udp_enabled: true
+dokploy_traefik_image: "traefik:v3.6.7"
+dokploy_timezone: "UTC"
+dokploy_advertise_addr: ""
+
 # Node.js version
 nodejs_version: "22.x"
 

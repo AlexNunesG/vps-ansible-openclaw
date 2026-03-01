@@ -22,7 +22,14 @@ Routed: DENY
 # Allowed
 SSH (22/tcp): ALLOW
 Tailscale (41641/udp): ALLOW
+
+# When dokploy_enabled=true and dokploy_public_ingress_enabled=true
+HTTP (80/tcp): ALLOW
+HTTPS (443/tcp): ALLOW
+HTTPS (443/udp): ALLOW (optional)
 ```
+
+Dokploy panel access (port 3000) remains private by default and is only allowed from `dokploy_panel_allowed_cidr`.
 
 ### Layer 2: Fail2ban (SSH Protection)
 
@@ -50,11 +57,12 @@ Custom iptables chain that prevents Docker from bypassing UFW:
 :DOCKER-USER - [0:0]
 -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 -A DOCKER-USER -i lo -j ACCEPT
+-A DOCKER-USER -i <default_interface> -p tcp -m multiport --dports 80,443 -j ACCEPT  # only when Dokploy public ingress enabled
 -A DOCKER-USER -i <default_interface> -j DROP
 COMMIT
 ```
 
-**Result**: Even `docker run -p 80:80 nginx` won't expose port 80 externally.
+**Result**: By default, published container ports are blocked externally. With Dokploy public ingress enabled, only 80/443 are allowed for the ingress path.
 
 ### Layer 4: Localhost-Only Binding
 
@@ -124,6 +132,9 @@ sudo tailscale status
 sudo iptables -L DOCKER-USER -n -v
 
 # Port scan from external machine (only SSH + Tailscale should be open)
+nmap -p- YOUR_SERVER_IP
+
+# If Dokploy public ingress is enabled, expected open ports are 22, 80, 443
 nmap -p- YOUR_SERVER_IP
 
 # Test container isolation

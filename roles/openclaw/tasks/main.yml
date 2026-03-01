@@ -17,6 +17,12 @@
   ansible.builtin.include_tasks: firewall-linux.yml
   when: not ci_test
 
+- name: Include Dokploy provisioning tasks
+  ansible.builtin.include_tasks: dokploy-linux.yml
+  when:
+    - not ci_test
+    - dokploy_enabled | bool
+
 - name: Include Node.js installation tasks
   ansible.builtin.include_tasks: nodejs.yml
 

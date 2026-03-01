@@ -179,6 +179,42 @@ These variables only apply when `openclaw_install_mode: development`
   ```
 - **Get Key**: https://login.tailscale.com/admin/settings/keys
 
+### Dokploy Configuration (Optional)
+
+#### `dokploy_enabled`
+- **Type**: Boolean
+- **Default**: `false`
+- **Description**: Enable Dokploy provisioning on the host
+- **Example**:
+  ```bash
+  -e dokploy_enabled=true
+  ```
+
+#### `dokploy_release_tag`
+- **Type**: String
+- **Default**: `latest`
+- **Description**: Dokploy image tag (`dokploy/dokploy:<tag>`)
+
+#### `dokploy_panel_private_only`
+- **Type**: Boolean
+- **Default**: `true`
+- **Description**: Keep Dokploy panel private and avoid public exposure
+
+#### `dokploy_panel_allowed_cidr`
+- **Type**: String (CIDR)
+- **Default**: `100.64.0.0/10`
+- **Description**: Source CIDR allowed to access Dokploy panel port
+
+#### `dokploy_public_ingress_enabled`
+- **Type**: Boolean
+- **Default**: `true`
+- **Description**: Open public ingress on 80/443 for Dokploy-managed applications
+
+#### `dokploy_panel_port`
+- **Type**: Integer
+- **Default**: `3000`
+- **Description**: Dokploy control plane port
+
 ### OS-Specific Settings
 
 These are automatically set based on the detected OS:
@@ -238,6 +274,20 @@ nodejs_version: "22.x"
 
 ```bash
 ansible-playbook playbook.yml --ask-become-pass -e @vars-prod.yml
+```
+
+### Dokploy: Private Panel + Public Apps
+
+```yaml
+# vars-dokploy.yml
+tailscale_enabled: true
+dokploy_enabled: true
+dokploy_panel_private_only: true
+dokploy_public_ingress_enabled: true
+```
+
+```bash
+ansible-playbook playbook.yml --ask-become-pass -e @vars-dokploy.yml
 ```
 
 ### Custom User and Directories

@@ -105,6 +105,48 @@
     comment: 'Tailscale'
   when: tailscale_enabled | bool
 
+- name: Allow Dokploy public HTTP ingress
+  community.general.ufw:
+    rule: allow
+    port: "{{ dokploy_public_http_port }}"
+    proto: tcp
+    comment: 'Dokploy Traefik HTTP'
+  when:
+    - dokploy_enabled | bool
+    - dokploy_public_ingress_enabled | bool
+
+- name: Allow Dokploy public HTTPS ingress (TCP)
+  community.general.ufw:
+    rule: allow
+    port: "{{ dokploy_public_https_port }}"
+    proto: tcp
+    comment: 'Dokploy Traefik HTTPS'
+  when:
+    - dokploy_enabled | bool
+    - dokploy_public_ingress_enabled | bool
+
+- name: Allow Dokploy public HTTPS ingress (UDP)
+  community.general.ufw:
+    rule: allow
+    port: "{{ dokploy_public_https_port }}"
+    proto: udp
+    comment: 'Dokploy Traefik HTTPS UDP'
+  when:
+    - dokploy_enabled | bool
+    - dokploy_public_ingress_enabled | bool
+    - dokploy_public_https_udp_enabled | bool
+
+- name: Allow Dokploy panel from Tailscale range only
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ dokploy_panel_allowed_cidr }}"
+    port: "{{ dokploy_panel_port }}"
+    proto: tcp
+    comment: 'Dokploy panel private access'
+  when:
+    - dokploy_enabled | bool
+    - dokploy_panel_private_only | bool
+
 - name: Get default network interface
   ansible.builtin.shell:
     cmd: |
@@ -136,6 +178,14 @@
 
       # Allow localhost
       -A DOCKER-USER -i lo -j ACCEPT
+
+      {% if dokploy_enabled | bool and dokploy_public_ingress_enabled | bool %}
+      # Allow public ingress ports used by Dokploy Traefik
+      -A DOCKER-USER -i {{ default_interface.stdout }} -p tcp -m multiport --dports {{ dokploy_public_http_port }},{{ dokploy_public_https_port }} -j ACCEPT
+      {% if dokploy_public_https_udp_enabled | bool %}
+      -A DOCKER-USER -i {{ default_interface.stdout }} -p udp --dport {{ dokploy_public_https_port }} -j ACCEPT
+      {% endif %}
+      {% endif %}
 
       # Block all other forwarded traffic to Docker containers from external interface
       -A DOCKER-USER -i {{ default_interface.stdout }} -j DROP
