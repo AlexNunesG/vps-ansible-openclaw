@@ -2,7 +2,7 @@
   "iptables": true,
   "ip-forward": true,
   "userland-proxy": false,
-  "live-restore": true,
+  "live-restore": {{ (not dokploy_enabled | bool) | lower }},
   "ip6tables": false,
   "log-driver": "json-file",
   "log-opts": {
