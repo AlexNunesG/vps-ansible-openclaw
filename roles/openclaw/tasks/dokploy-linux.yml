@@ -147,7 +147,7 @@
   ansible.builtin.command: docker service update --image dokploy/dokploy:{{ dokploy_release_tag }} dokploy
   when:
     - dokploy_service_image.rc == 0
-    - dokploy_service_image.stdout != 'dokploy/dokploy:{{ dokploy_release_tag }}'
+    - dokploy_service_image.stdout != ('dokploy/dokploy:' ~ dokploy_release_tag)
 
 - name: Ensure dokploy-traefik container exists
   ansible.builtin.command: docker container inspect dokploy-traefik
@@ -175,7 +175,7 @@
   changed_when: dokploy_traefik_network_connect.rc == 0
   failed_when:
     - dokploy_traefik_network_connect.rc != 0
-    - "'already exists in network' not in (dokploy_traefik_network_connect.stderr | default(''))"
+    - "not ((dokploy_traefik_network_connect.stderr | default('')) is search('already (exists|attached) to network'))"
 
 - name: Display Dokploy access summary
   ansible.builtin.debug:
