@@ -31,6 +31,9 @@ nodejs_version: "22.x"
 
 # OpenClaw settings
 openclaw_port: 3000
+openclaw_gateway_tailscale_enabled: false
+openclaw_gateway_port: 18789
+openclaw_gateway_allowed_cidr: "100.64.0.0/10"
 
 # OpenClaw config directory
 openclaw_config_dir: "{{ openclaw_home }}/.openclaw"

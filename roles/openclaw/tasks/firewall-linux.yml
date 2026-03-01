@@ -147,6 +147,17 @@
     - dokploy_enabled | bool
     - dokploy_panel_private_only | bool
 
+- name: Allow OpenClaw gateway from Tailscale range only
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ openclaw_gateway_allowed_cidr }}"
+    port: "{{ openclaw_gateway_port }}"
+    proto: tcp
+    comment: 'OpenClaw gateway private access'
+  when:
+    - tailscale_enabled | bool
+    - openclaw_gateway_tailscale_enabled | bool
+
 - name: Get default network interface
   ansible.builtin.shell:
     cmd: |
