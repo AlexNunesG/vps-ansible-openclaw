@@ -221,6 +221,33 @@ This will:
 - Symlink binary to `~/.local/bin/openclaw`
 - Add development aliases to `.bashrc`
 
+## GitHub Actions Auto-Deploy
+
+This repository includes [`.github/workflows/deploy-hosts.yml`](.github/workflows/deploy-hosts.yml) to run the playbook automatically when `main` is updated.
+
+### Trigger
+
+- Push to `main`
+- Manual run via `workflow_dispatch`
+
+### Required Repository Secrets
+
+- `DEPLOY_HOSTS` - Comma-separated host list (`host1.example.com,host2.example.com`)
+- `DEPLOY_SSH_USER` - SSH user on target hosts
+- `DEPLOY_SSH_KEY` - Private SSH key (PEM/OpenSSH format)
+- `DEPLOY_SSH_PORT` - SSH port (usually `22`)
+- `DEPLOY_HOST_FINGERPRINT` - SSH host key fingerprint for verification
+
+### Optional Repository Variables
+
+- `ANSIBLE_EXTRA_ARGS` - Extra playbook args (example: `-e tailscale_enabled=true -e dokploy_enabled=true`)
+
+### Host Requirements
+
+- `ansible-playbook` and `ansible-galaxy` must be installed on each target host
+- SSH user must be root or have passwordless sudo (`playbook.yml` runs with `become: true`)
+- Target host must allow `git clone` from GitHub
+
 ## Configuration Options
 
 All configuration variables can be found in [`roles/openclaw/defaults/main.yml`](roles/openclaw/defaults/main.yml).

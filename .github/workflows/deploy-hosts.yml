@@ -1,0 +1,49 @@
+---
+name: Deploy Hosts
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-hosts-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Run playbook on remote hosts
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Deploy playbook over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          REPO: https://github.com/${{ github.repository }}.git
+          BRANCH: main
+          WORK_DIR: /opt/openclaw-ansible
+          ANSIBLE_EXTRA_ARGS: ${{ vars.ANSIBLE_EXTRA_ARGS }}
+        with:
+          host: ${{ secrets.DEPLOY_HOSTS }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT }}
+          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
+          sync: true
+          script_stop: true
+          envs: REPO,BRANCH,WORK_DIR,ANSIBLE_EXTRA_ARGS
+          script: |
+            set -euo pipefail
+
+            if [ ! -d "$WORK_DIR/.git" ]; then
+              rm -rf "$WORK_DIR"
+              git clone --branch "$BRANCH" --depth 1 "$REPO" "$WORK_DIR"
+            fi
+
+            cd "$WORK_DIR"
+            git fetch origin "$BRANCH"
+            git checkout "$BRANCH"
+            git reset --hard "origin/$BRANCH"
+
+            ansible-galaxy collection install -r requirements.yml
+            ansible-playbook playbook.yml ${ANSIBLE_EXTRA_ARGS:-}
